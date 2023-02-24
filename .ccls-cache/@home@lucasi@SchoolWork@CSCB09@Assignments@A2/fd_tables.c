@@ -5,9 +5,10 @@
 #include <dirent.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
-void showTableEntry(int*, int, int, int, int, int);
+void showProcessEntry(int*, int, int, int, int, int);
 
 void printEntry(struct dirent *entry, int, int, int, int, int);
 
@@ -16,8 +17,9 @@ void printSystemEntry(struct dirent *entry, int);
 void printVNodeEntry(struct dirent *entry, int);
 void printCompositeEntry(struct dirent *entry, int);
 
-int validFd(char*);
-void setPath(char*, int, size_t);
+int getAvailableProcesses(int**);
+
+int validPath(char*);
 size_t maxPathSize(int);
 
 void composeArgs(int*);
@@ -46,7 +48,7 @@ int main(int argc, char *argv[]) {
   return 0;
 }
 
-void showTableEntry(int* pids, int numPID, int perProcess, int systemWide, int vNodes, int composite) {
+void showProcessEntry(int* pids, int numPID, int perProcess, int systemWide, int vNodes, int composite) {
 
   if (perProcess + systemWide + vNodes + composite == 0) {
     return;
@@ -56,29 +58,33 @@ void showTableEntry(int* pids, int numPID, int perProcess, int systemWide, int v
   
     int pid = pids[i];
 
-    size_t maxSize = maxPathSize(pid);
+    size_t maxSize = maxPathSize(pid) * sizeof(char);
 
-    char* path = malloc(maxSize * sizeof(char));
-    setPath(path, pid, maxSize);
+    char* path = malloc(maxSize);
+    snprintf(path, maxSize, "/proc/%d/fd/", pid);
+
 
     DIR *directory = opendir(path);
 
     if (directory == NULL) {
-      perror("directory could not be opened");
+      perror("/proc/pid/fd/ directory could not be opened");
+      free(path);
+      continue;
     } 
+
+    free(path);
 
     struct dirent *entry;   
 
 
     while ((entry = readdir(directory)) != NULL) {
-      if (validFd(entry -> d_name) == 0) {
+      if (validPath(entry -> d_name) == 0) {
         continue;
       }
       printEntry(entry, pid, perProcess, systemWide, vNodes, composite);
     }
 
     closedir(directory);
-    free(path);
   }
 
 }
@@ -96,7 +102,7 @@ void printEntry(struct dirent *entry, int pid, int perProcess, int systemWide, i
 }
 
 void printPerProcessEntry(struct dirent *entry, int pid) { 
-  printf("%d    ,    %s\n", pid, entry -> d_name);
+  printf("|    %d    |    %s    |\n", pid, entry -> d_name);
 }
 
 void printSystemEntry(struct dirent *entry, int pid) {
@@ -111,19 +117,77 @@ void printCompositeEntry(struct dirent *entry, int pid) {
 
 }
 
-int validFd(char* filename) {
+int validPath(char* filename) {
   if (filename[0] == '.') {
     return 0;
   }
   return 1;
 }
 
-void setPath(char* path, int pid, size_t length) {
-  snprintf(path, length * sizeof(char), "/proc/%d/fd/", pid);
-}
-
 size_t maxPathSize(int pid) {
   return ((int) log10f((float) pid)) + 1 + 15; 
+}
+
+int getAvailableProcesses(int** pids) {
+
+  DIR *directory = opendir("/proc/");
+
+  if (directory == NULL) {
+    perror("/proc/ directory could not be opened.");
+  }
+
+  struct dirent *entry;
+
+  uid_t uid = getuid();
+
+  int count = 1;
+  *pids = malloc(count * sizeof(int));
+
+
+  while ((entry = readdir(directory)) != NULL) {
+
+    if (validPath(entry -> d_name) == 0) {
+      continue;
+    }
+   
+    int pid = atoi(entry -> d_name);
+
+    if (pid <= 0) {
+      continue;
+    }
+
+    size_t maxSize = maxPathSize(pid) * sizeof(char);
+
+    char* path = malloc(maxSize);
+    snprintf(path, maxSize, "/proc/%d", pid);
+
+    struct stat fileStat;
+    
+    if (stat(path, &fileStat) == -1) {
+      perror("Could not stat file");
+      free(path);
+      continue;
+    }
+
+    if (fileStat.st_uid != uid) {
+      free(path);
+      continue;
+    }
+
+    free(path);
+
+    // we have a valid process
+
+    *pids = realloc(*pids, count * sizeof(int));
+    (*pids)[count - 1] = pid;
+
+    count++;
+    
+  }
+
+  closedir(directory);
+
+  return count - 1;
 }
 
 void composeArgs(int *flags) {
@@ -140,13 +204,24 @@ void composeArgs(int *flags) {
  //    printf("%d\n", flags[i]);
  //  }
 
-  int pids[1] = {
-    0
-  };
+  int* pids;
 
-  pids[0] = getpid();
+  int numPID;
 
-  showTableEntry(pids, 1, 1, 0, 0, 0);
+  if (pidAll == 1) {
+    numPID = getAvailableProcesses(&pids);
+  }
+
+  printf("pid:%d\n", pids[0]);
+
+  if (perProcess == 1) {
+    printf("|====PID=========FD====|\n");
+    showProcessEntry(pids, numPID, 1, 0, 0, 0);
+  }
+
+  if (pidAll == 1) {
+    free(pids);
+  }
 
 }
 
