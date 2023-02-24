@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <inttypes.h>
 #include "structprocess.h"
 
 void showTable(procentry* root, int, int, int, int, int, int);
@@ -18,14 +19,16 @@ void printSystemEntry(procentry *entry);
 void printVNodeEntry(procentry *entry);
 void printCompositeEntry(procentry *entry);
 
-procentry* deleteList(procentry *root);
-procentry* createProcessEntry(int pid, int fd, int symlinkInode, char symlink[256]);
-void addToEndOfList(procentry *root, int pid, int fd, int symlinkInode, char symlink[256]);
+void printOffendingProcesses(procentry *root, int threshold);
+
+procentry* deleteList(procentry **root);
+procentry* createProcessEntry(int pid, int fd, ino_t iNode, char symlink[256]);
+void addToEndOfList(procentry **root, int pid, int fd, ino_t iNode, char symlink[256]);
 
 int getSymlink(char buffer[256], int pid, int fd);
-int getINode(char path[256]);
+ino_t getINode(int pid, int fd);
 
-void addProcessEntriesToList(procentry* root, int pid);
+void addProcessEntriesToList(procentry **root, int pid);
 procentry* getAvailableProcesses();
 
 int validPath(char*);
@@ -43,7 +46,7 @@ int main(int argc, char *argv[]) {
     0, //system-wide
     0, //Vnodes
     0, //composite
-    0, //threshold=X
+    -1, //threshold=X
     1, //pid all
     0, //pid if not all
   };
@@ -91,15 +94,30 @@ void printPerProcessEntry(procentry *entry) {
 }
 
 void printSystemEntry(procentry *entry) {
-
-   printf("    %d        %d        %s\n", entry -> pid, entry -> fd, entry -> symlink);
+  printf("    %d        %d        %s\n", entry -> pid, entry -> fd, entry -> symlink);
 } 
 
 void printVNodeEntry(procentry *entry) {
-
+  printf("    %d        %ju\n", entry -> fd, (uintmax_t) entry -> iNode);
 }
 
 void printCompositeEntry(procentry *entry) {
+  printf("    %d        %d        %ju        %s\n", entry -> pid, entry -> fd, (uintmax_t) entry -> iNode, entry -> symlink);
+}
+
+void printOffendingProcesses(procentry *root, int threshold) {
+
+  procentry *currentEntry = root;
+
+  while (currentEntry != NULL) {
+
+    if (currentEntry -> fd > threshold) {
+      printf("%d:(%d), ", currentEntry -> pid, currentEntry -> fd);
+    }
+
+    currentEntry = currentEntry -> next;
+
+  }
 
 }
 
@@ -118,7 +136,7 @@ int getSymlink(char buffer[256], int pid, int fd) {
 
   size_t maxSize = 256;
 
-  char* path = malloc(maxSize);
+  char* path = malloc(maxSize * sizeof(char));
   snprintf(path, maxSize, "/proc/%d/fd/%d", pid, fd);
 
   if (readlink(path, buffer, 256) == -1) {
@@ -131,7 +149,12 @@ int getSymlink(char buffer[256], int pid, int fd) {
   return 0;
 }
 
-int getINode(char path[256]) {
+ino_t getINode(int pid, int fd) {
+
+  size_t maxSize = 256;
+
+  char* path = malloc(maxSize * sizeof(char));
+  snprintf(path, maxSize, "/proc/%d/fd/%d", pid, fd);
 
   struct stat fileStat;
 
@@ -143,7 +166,7 @@ int getINode(char path[256]) {
 
 }
 
-void addProcessEntriesToList(procentry* root, int pid) {
+void addProcessEntriesToList(procentry **root, int pid) {
 
   size_t maxSize = maxPathSize(pid) * sizeof(char);
 
@@ -182,23 +205,16 @@ void addProcessEntriesToList(procentry* root, int pid) {
     char symlink[256];
 
     if (getSymlink(symlink, pid, fd) == -1) {
-      printf("hello\n");
       continue;
     }
 
-    int iNode;
+    ino_t iNode;
 
-    if ((iNode = getINode(symlink)) == -1) {
-      printf("%s\n", symlink);
+    if ((iNode = getINode(pid, fd)) == -1) {
       continue;
     }
 
-    if (root == NULL) {
-      printf("pid: %d, fd: %d, inode: %d\n", pid, fd, iNode);
-      root = createProcessEntry(pid, fd, iNode, symlink);
-    } else {
-      addToEndOfList(root, pid, fd, iNode, symlink);
-    }
+    addToEndOfList(root, pid, fd, iNode, symlink);
 
   }
 
@@ -254,7 +270,7 @@ procentry* getAvailableProcesses() {
 
     // we have a valid process
 
-    addProcessEntriesToList(processEntryRoot, pid);
+    addProcessEntriesToList(&processEntryRoot, pid);
     
   }
 
@@ -282,7 +298,7 @@ void composeArgs(int *flags) {
   if (pidAll == 1) {
     processEntryRoot = getAvailableProcesses();
   } else {
-    addProcessEntriesToList(processEntryRoot, pidSelected);
+    addProcessEntriesToList(&processEntryRoot, pidSelected);
   }
 
   if (perProcess == 1) {
@@ -298,11 +314,31 @@ void composeArgs(int *flags) {
   }
 
   if (vNodes == 1) {
-    printf("|====PID=======INODE====|\n");
+    printf("|====FD=======INODE====|\n");
     showTable(processEntryRoot, pidAll, pidSelected, 0, 0, 1, 0);
+    printf("\n");
   }
 
-  processEntryRoot = deleteList(processEntryRoot);
+  if (composite == 1) {
+    printf("|====PID=======FD=======INODE=======LINK====|\n");
+    showTable(processEntryRoot, pidAll, pidSelected, 0, 0, 0, 1);
+    printf("\n");
+  }
+
+  if (threshold != -1) {
+
+    if (pidAll == 0) {
+      processEntryRoot = deleteList(&processEntryRoot);
+      processEntryRoot = getAvailableProcesses();
+    }
+
+    printf("## Offending Processes:\n");
+    printOffendingProcesses(processEntryRoot, threshold);
+    printf("\n");
+
+  }
+
+  processEntryRoot = deleteList(&processEntryRoot);
 
 }
 
@@ -370,9 +406,9 @@ int setFlags(int *flags, int argc, char *argv[]) {
 
 }
 
-procentry* deleteList(procentry *root) {
+procentry* deleteList(procentry **root) {
 
-  procentry *traverse = root;
+  procentry *traverse = *root;
   procentry *next = NULL;
 
   while (traverse != NULL) {
@@ -385,11 +421,16 @@ procentry* deleteList(procentry *root) {
 
 }
 
-void addToEndOfList(procentry* root, int pid, int fd, int symlinkInode, char symlink[256]) {
+void addToEndOfList(procentry **root, int pid, int fd, ino_t iNode, char symlink[256]) {
 
-  procentry *processEntry = createProcessEntry(pid, fd, symlinkInode, symlink);
-  
-  procentry *traverse = root;
+  procentry *processEntry = createProcessEntry(pid, fd, iNode, symlink);
+
+  if (*root == NULL) {
+    *root = processEntry;
+    return;
+  }
+
+  procentry *traverse = *root;
 
   while (traverse -> next != NULL) {
     traverse = traverse -> next;
@@ -398,13 +439,13 @@ void addToEndOfList(procentry* root, int pid, int fd, int symlinkInode, char sym
   traverse -> next = processEntry;
 }
 
-procentry* createProcessEntry(int pid, int fd, int symlinkInode, char symlink[256]) {
+procentry* createProcessEntry(int pid, int fd, ino_t iNode, char symlink[256]) {
 
   procentry *processEntry = (procentry *) malloc(sizeof(procentry));
 
   processEntry -> pid = pid;
   processEntry -> fd = fd;
-  processEntry -> symlinkInode = symlinkInode;
+  processEntry -> iNode = iNode;
   processEntry -> next = NULL;
 
   strncpy(processEntry -> symlink, symlink, 256 * sizeof(char));
