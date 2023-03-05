@@ -110,24 +110,24 @@ void showTable(procentry* root, int pidAll, int pid, int perProcess, int systemW
 
 void printPerProcessEntry(procentry *entry) {
   // print pid and fd for --per-process
-  printf("    %d        %d    \n", entry -> pid, entry -> fd);
+  printf("    %d\t\t%d\n", entry -> pid, entry -> fd);
 }
 
 void printSystemEntry(procentry *entry) {
   // print pid, fd, and the fd's symlink for --systemWide
-  printf("    %d        %d        %s\n", entry -> pid, entry -> fd, entry -> symlink);
+  printf("    %d\t\t%d        %s\n", entry -> pid, entry -> fd, entry -> symlink);
 } 
 
 void printVNodeEntry(procentry *entry) {
   // print the fd and the inode associated for --Vnodes
   // we use a %ju and cast to uintmax_t because we don't know the size of iNode as it is of type ino_t. If the value
   // exceeds the integer range for example (possible through testing), we will get junk values if we just print using %d.
-  printf("    %d        %ju\n", entry -> fd, (uintmax_t) entry -> iNode);
+  printf("    %d\t\t%ju\n", entry -> fd, (uintmax_t) entry -> iNode);
 }
 
 void printCompositeEntry(procentry *entry) {
   // print the pid, fd, inode, and fd's symlink for --composite
-  printf("    %d        %d        %ju        %s\n", entry -> pid, entry -> fd, (uintmax_t) entry -> iNode, entry -> symlink);
+  printf("    %d\t\t%d\t\t%ju\t\t%s\n", entry -> pid, entry -> fd, (uintmax_t) entry -> iNode, entry -> symlink);
 }
 
 void printOffendingProcesses(procentry *root, int threshold) {
@@ -172,12 +172,22 @@ int getSymlink(char buffer[256], int pid, int fd) {
   // set the path of the file descriptor to path
   snprintf(path, maxSize, "/proc/%d/fd/%d", pid, fd);
 
+  ssize_t linkSize = readlink(path, buffer, 256);
+
   // use readlink to populate the buffer argument with the symlink associated to the fd path 
-  if (readlink(path, buffer, 256) == -1) {
+  if (linkSize == -1) {
     // if we get an error we free path and return out
     free(path);
     return -1;
   }
+
+  // cap linksize
+  if (linkSize > 255) {
+    linkSize = 255;
+  }
+  
+  // null terminate it 
+  buffer[linkSize] = '\0';
 
   // free path since it is allocated
   free(path);
