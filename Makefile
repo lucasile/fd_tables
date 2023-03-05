@@ -1,15 +1,9 @@
-
 CC=gcc
-TARGET=fd_tables
-RM=rm
+LIBS=-lm
+ARGS=-Wall
 
-default: all
-
-all: fd_tables
-
-fd_tables: fd_tables.c
-	$(CC) fd_tables.c -Wall -o $(TARGET) -lm
-
+fd_tables: fd_tables.c structprocess.h
+	$(CC) $< $(ARGS) $(LIBS) -o $@ 
 clean:
 	$(RM) $(TARGET)
 
