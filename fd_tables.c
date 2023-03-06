@@ -172,10 +172,9 @@ void writeCompositeToTextFile(FILE **file, procentry *entry) {
 // precon: file opened with wb 
 void writeCompositeToBinaryFile(FILE **file, procentry *entry) {
   // note: file already opened
-  char* buffer = malloc(512 * sizeof(char));
-  snprintf(buffer, 512 * sizeof(char), "    %d\t\t%d\t\t%ju\t\t%s\n", entry -> pid, entry -> fd, (uintmax_t) entry -> iNode, entry -> symlink);
-  fwrite(&buffer, 512 * sizeof(char), 1, *file);
-  free(buffer);
+  char buffer[512];
+  size_t bufferSize = snprintf(buffer, 512 * sizeof(char), "    %d\t\t%d\t\t%ju\t\t%s\n", entry -> pid, entry -> fd, (uintmax_t) entry -> iNode, entry -> symlink);
+  fwrite(&buffer, bufferSize, 1, *file);
 }
 
 void printOffendingProcesses(procentry *root, int threshold) {
