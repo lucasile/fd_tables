@@ -13,5 +13,5 @@ clean-output:
 
 .PHONY: clean
 clean:
-	$(RM) $(TARGET)
+	$(RM) fd_tables
 
