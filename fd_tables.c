@@ -14,8 +14,6 @@
 
 void showTable(procentry* root, int, int, int, int, int, int, int, int);
 
-void printEntry(struct dirent *entry, int, int, int, int, int);
-
 void printPerProcessEntry(procentry *entry);
 void printSystemEntry(procentry *entry);
 void printVNodeEntry(procentry *entry);
@@ -552,7 +550,7 @@ int setFlags(int *flags, int argc, char *argv[]) {
 
   // if no flags other than position arguments specified and outputting files, set it to print the composite table
   if (argc <= 1 || (argc == 2 && flags[5] == 0) || (argc == 2 && (flags[7] == 1|| flags[8] == 1)) || 
-      (argc == 3 && (flags[7] == 1 && flags[8] == 1))) {
+      (argc == 3 && (flags[7] == 1 || flags[8] == 1)) || (argc == 4 && (flags[7] == 1 && flags[8] == 1))) {
     // default composite = 1,
     flags[3] = 1;
   }
