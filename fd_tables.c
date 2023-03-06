@@ -92,7 +92,7 @@ void showTable(procentry* root, int pidAll, int pid, int perProcess, int systemW
   }
 
   if (outputBinary == 1) {
-    fileBinary = fopen("compositeTable.bin", "wb");
+    fileBinary = fopen("compositeTable.bin", "w:b");
   }
 
   // iterate over the linked list 
@@ -174,7 +174,8 @@ void writeCompositeToBinaryFile(FILE **file, procentry *entry) {
   // note: file already opened
   char* buffer = malloc(512 * sizeof(char));
   snprintf(buffer, 512 * sizeof(char), "    %d\t\t%d\t\t%ju\t\t%s\n", entry -> pid, entry -> fd, (uintmax_t) entry -> iNode, entry -> symlink);
-  fwrite(&buffer, sizeof(buffer), 1, *file);
+  fwrite(&buffer, 512 * sizeof(char), 1, *file);
+  free(buffer);
 }
 
 void printOffendingProcesses(procentry *root, int threshold) {
