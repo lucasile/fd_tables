@@ -12,7 +12,7 @@
 
 // display functions
 
-void showTable(procentry* root, int, int, int, int, int, int);
+void showTable(procentry* root, int, int, int, int, int, int, int, int);
 
 void printEntry(struct dirent *entry, int, int, int, int, int);
 
@@ -44,6 +44,10 @@ procentry* getAvailableProcesses();
 int validPath(char*);
 size_t maxPathSize(int);
 
+// create and output file
+void writeCompositeToTextFile(FILE **file, procentry *entry);
+void writeCompositeToBinaryFile(FILE **file, procentry *entry);
+
 // take arguments and route them properly 
 
 void composeArgs(int*);
@@ -53,7 +57,7 @@ int setFlags(int*, int, char**);
 
 int main(int argc, char *argv[]) {
 
-  int flags[7] = {
+  int flags[9] = {
     0, //per-process
     0, //system-wide
     0, //Vnodes
@@ -61,6 +65,8 @@ int main(int argc, char *argv[]) {
     -1, //threshold=X
     1, //pid all
     0, //pid if not all
+    0, //output txt
+    0, //output binary
   };
 
   // take the CLA and parse them. if there is an error it will return 0 and we exit the program
@@ -74,9 +80,20 @@ int main(int argc, char *argv[]) {
   return 0;
 }
 
-void showTable(procentry* root, int pidAll, int pid, int perProcess, int systemWide, int vNodes, int composite) {
+void showTable(procentry* root, int pidAll, int pid, int perProcess, int systemWide, int vNodes, int composite, int outputTXT, int outputBinary) {
 
   procentry *currentEntry = root;
+
+  FILE *fileTXT;
+  FILE *fileBinary;
+
+  if (outputTXT == 1) {
+    fileTXT = fopen("compositeTable.txt", "w");
+  }
+
+  if (outputBinary == 1) {
+    fileBinary = fopen("compositeTable.bin", "wb");
+  }
 
   // iterate over the linked list 
 
@@ -101,9 +118,25 @@ void showTable(procentry* root, int pidAll, int pid, int perProcess, int systemW
       printCompositeEntry(currentEntry);
     }
 
+    if (outputTXT == 1) {
+      writeCompositeToTextFile(&fileTXT, currentEntry);
+    }
+
+    if (outputBinary == 1) {
+      writeCompositeToBinaryFile(&fileBinary, currentEntry);
+    }
+
     // go to next entry 
     currentEntry = currentEntry -> next;
 
+  }
+
+  if (outputTXT == 1) {
+    fclose(fileTXT);
+  }
+
+  if (outputBinary == 1) {
+    fclose(fileBinary);
   }
 
 }
@@ -128,6 +161,20 @@ void printVNodeEntry(procentry *entry) {
 void printCompositeEntry(procentry *entry) {
   // print the pid, fd, inode, and fd's symlink for --composite
   printf("    %d\t\t%d\t\t%ju\t\t%s\n", entry -> pid, entry -> fd, (uintmax_t) entry -> iNode, entry -> symlink);
+}
+
+// precon: file opened with a 
+void writeCompositeToTextFile(FILE **file, procentry *entry) {
+  // note: file already opened
+  fprintf(*file, "    %d\t\t%d\t\t%ju\t\t%s\n", entry -> pid, entry -> fd, (uintmax_t) entry -> iNode, entry -> symlink);
+}
+
+// precon: file opened with ab 
+void writeCompositeToBinaryFile(FILE **file, procentry *entry) {
+  // note: file already opened
+  char* buffer = malloc(512 * sizeof(char));
+  snprintf(buffer, 512 * sizeof(char), "    %d\t\t%d\t\t%ju\t\t%s\n", entry -> pid, entry -> fd, (uintmax_t) entry -> iNode, entry -> symlink);
+  fwrite(&buffer, sizeof(buffer), 1, *file);
 }
 
 void printOffendingProcesses(procentry *root, int threshold) {
@@ -369,6 +416,8 @@ void composeArgs(int *flags) {
   int threshold = flags[4];
   int pidAll = flags[5];
   int pidSelected = flags[6];
+  int outputTXT = flags[7];
+  int outputBinary = flags[8];
 
   // setup the head of the linked list 
   procentry* processEntryRoot = NULL;
@@ -384,25 +433,25 @@ void composeArgs(int *flags) {
   // the following if statements just print the tables depending on the CLA specified
   if (perProcess == 1) {
     printf("|====PID=======FD====|\n");
-    showTable(processEntryRoot, pidAll, pidSelected, 1, 0, 0, 0);
+    showTable(processEntryRoot, pidAll, pidSelected, 1, 0, 0, 0, outputTXT, outputBinary);
     printf("\n");
   }
 
   if (systemWide == 1) {
     printf("|====PID=======FD=======LINK====|\n");
-    showTable(processEntryRoot, pidAll, pidSelected, 0, 1, 0, 0);
+    showTable(processEntryRoot, pidAll, pidSelected, 0, 1, 0, 0, outputTXT, outputBinary);
     printf("\n");
   }
 
   if (vNodes == 1) {
     printf("|====FD=======INODE====|\n");
-    showTable(processEntryRoot, pidAll, pidSelected, 0, 0, 1, 0);
+    showTable(processEntryRoot, pidAll, pidSelected, 0, 0, 1, 0, outputTXT, outputBinary);
     printf("\n");
   }
 
   if (composite == 1) {
     printf("|====PID=======FD=======INODE=======LINK====|\n");
-    showTable(processEntryRoot, pidAll, pidSelected, 0, 0, 0, 1);
+    showTable(processEntryRoot, pidAll, pidSelected, 0, 0, 0, 1, outputTXT, outputBinary);
     printf("\n");
   }
 
@@ -445,6 +494,10 @@ int setFlags(int *flags, int argc, char *argv[]) {
       flags[1] = 1;
     } else if (strcmp(flag, "--Vnodes") == 0) {
       flags[2] = 1;
+    } else if (strcmp(flag, "--output_TXT") == 0) {
+      flags[7] = 1;
+    } else if (strcmp(flag, "--output_binary") == 0) {
+      flags[8] = 1;
     } else if (strcmp(flag, "--composite") == 0) {
       flags[3] = 1;
     } else if (strcmp(flag, "--threshold") == 0) {
@@ -497,8 +550,9 @@ int setFlags(int *flags, int argc, char *argv[]) {
 
   }
 
-  // if no flags other than position arguments specified, set it to print the composite table
-  if (argc <= 1 || (argc == 2 && flags[5] == 0)) {
+  // if no flags other than position arguments specified and outputting files, set it to print the composite table
+  if (argc <= 1 || (argc == 2 && flags[5] == 0) || (argc == 2 && (flags[7] == 1|| flags[8] == 1)) || 
+      (argc == 3 && (flags[7] == 1 && flags[8] == 1))) {
     // default composite = 1,
     flags[3] = 1;
   }
