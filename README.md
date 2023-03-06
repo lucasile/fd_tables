@@ -2,16 +2,6 @@
 
 Author: Lucas Ilea
 
-# Table of contents
-
-<!--ts-->
-
-- [Documentation](#documentation) \* [Compilation](#compilation)
-  - [Arguments](#arguments)
-  - [Code](#code)
-
-<!--te-->
-
 ## Documentation
 
 ## Compilation and make
