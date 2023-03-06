@@ -163,13 +163,13 @@ void printCompositeEntry(procentry *entry) {
   printf("    %d\t\t%d\t\t%ju\t\t%s\n", entry -> pid, entry -> fd, (uintmax_t) entry -> iNode, entry -> symlink);
 }
 
-// precon: file opened with a 
+// precon: file opened with w 
 void writeCompositeToTextFile(FILE **file, procentry *entry) {
   // note: file already opened
   fprintf(*file, "    %d\t\t%d\t\t%ju\t\t%s\n", entry -> pid, entry -> fd, (uintmax_t) entry -> iNode, entry -> symlink);
 }
 
-// precon: file opened with ab 
+// precon: file opened with wb 
 void writeCompositeToBinaryFile(FILE **file, procentry *entry) {
   // note: file already opened
   char* buffer = malloc(512 * sizeof(char));
